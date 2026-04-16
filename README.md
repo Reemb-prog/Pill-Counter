@@ -1,6 +1,9 @@
 # Pill Counter for Medication Management
 
-Streamlit dashboard for **image-based pill counting** and **dosage verification** (expected dose vs detected count). This phase provides a **production-style UI and architecture** with **mock pipeline outputs**. Real model inference can be connected in a later phase via a **deployed API** (for example, FastAPI exported from Colab) or **local serialized artifacts** (`joblib`, `pickle`, ONNX, PyTorch, TensorFlow, etc.).
+Streamlit dashboard for **image-based pill counting** and **dosage verification** (expected dose vs detected count). The current app supports:
+- `Mock Mode` uses synthetic outputs.
+- `Local Artifact Mode` runs real predictions using the trained YOLO weights (`best.pt`).
+- `API Mode` remains the future option for a deployed backend.
 
 ---
 
@@ -12,20 +15,30 @@ Streamlit dashboard for **image-based pill counting** and **dosage verification*
 | **`ui/styles.py`** | `inject_custom_css()` — calm dashboard styling (metric labels, status pills, footnote). |
 | **`ui/layout.py`** | `page_hero`, section headers, metric cells, **dosage status** HTML (green / amber / red), footer, empty-state helper. |
 | **`ui/components.py`** | **Input panel** (upload vs random sample, preview, expected dosage, advanced expander), **Run Analysis** → `run_analysis()`, **results** metrics, **pipeline tabs** + feature `st.dataframe`, **evaluation** dashboards from JSON, **settings** summary. |
-| **`services/mock_pipeline.py`** | Mock **preprocessing / segmentation-style** visuals (PIL), deterministic-ish count from image hash, features table, API-shaped dict + `_pil` for fast UI. |
-| **`services/api_client.py`** | `PillCountApiClient`: documented **request/response contract**, `test_connection()` (GET `/health` + base URL fallback), `post_predict()` **NotImplemented** with TODO for Colab/FastAPI. |
-| **`services/inference.py`** | **Adapter**: `MockRunner`, `ApiRunner`, `LocalArtifactRunner`; `get_runner()`, `run_analysis()`; Base64 → `_pil` helper for future API. |
+| **`services/mock_pipeline.py`** | Sample-output inference path for Mock Mode, including display-ready stage images and a feature table. |
+| **`services/api_client.py`** | `PillCountApiClient`: request/response contract for optional API integration, `test_connection()` (GET `/health` + base URL fallback), `post_predict()` placeholder for an external service. |
+| **`services/inference.py`** | **Adapter**: `MockRunner`, `ApiRunner`, `LocalArtifactRunner`; `get_runner()`, `run_analysis()`; Base64 → `_pil` helper for API responses. |
 | **`utils/config.py`** | Paths, backend labels, defaults, nav page ids, allowed extensions. |
 | **`utils/state.py`** | Central `st.session_state` defaults (aligned with widget keys). |
-| **`utils/image_utils.py`** | Upload load, type check, random sample, **`ensure_demo_sample_images()`** if folder empty. |
-| **`data/sample_metrics.json`** | Mock **accuracy, MAE, fold curves, confusion-style matrix, comparison table, failure notes**. |
-| **`assets/sample_images/`** | Populated at runtime with synthetic PNGs if empty. |
-| **`assets/icons/`** | Placeholder for optional icon assets. |
-| **`requirements.txt`** | `streamlit`, `pandas`, `numpy`, `Pillow`, `requests`. |
+| **`utils/image_utils.py`** | Upload load, type check, random sample loading, and starter sample-image creation if no sample images exist yet. |
+| **`data/sample_metrics.json`** | Bundled evaluation summary data used by the Evaluation page. |
+| **`assets/sample_images/`** | Created and populated on first run if missing, so random-sample mode works immediately. |
+| **`requirements.txt`** | App + notebook dependencies (`streamlit`, `opencv-python-headless`, `jupyter`, …). |
+| **`services/yolo_trained_pipeline.py`** | Trained YOLO inference adapter: loads `best.pt`, runs detection, computes pill count + dosage status, and returns UI-shaped outputs. |
+| **`pill couter and dosage decision full pipeline notebook.ipynb`** | Final training + inference workflow source (counting + dosage decision logic). |
+| **`data/ground_truth_counts.csv`** | Optional per-filename pill counts for notebook evaluation (bundled for synthetic samples). |
+
+### Run the Jupyter pipeline notebook
+
+From the project root, install dependencies (includes Jupyter and OpenCV), then:
+
+```bash
+jupyter notebook "pill couter and dosage decision full pipeline notebook.ipynb"
+```
+
+Or use VS Code / Cursor “Run All”. The notebook contains the final YOLO inference + dosage decision logic and exports/uses `best.pt`.
 
 ---
-
-## What to do next
 
 ### Run the app locally
 
@@ -57,16 +70,21 @@ From the **project root** (the folder that contains `app.py`):
    streamlit run app.py
    ```
 
-### Connect a real backend (later phase)
+### Backend modes
 
-- **API:** Implement `PillCountApiClient.post_predict()` and tune `test_connection()` in `services/api_client.py`. The response should match the JSON contract documented in that module’s docstring. Select **API Mode** in the sidebar and set base URL, endpoint, and timeout.
-- **Local artifact:** Implement `LocalArtifactRunner.run()` in `services/inference.py` and return the same structure (or Base64 `images` like the API). Choose **Local Artifact Mode** and set model / preprocessor / label paths in the sidebar.
+- **API:** Optional external-service integration. Implement `PillCountApiClient.post_predict()` and tune `test_connection()` in `services/api_client.py` if you want to call a deployed backend. Select **API Mode** in the sidebar and set base URL, endpoint, and timeout.
+- **Local artifact:** Use **Local Artifact Mode** (already wired). Leave the model path blank to default to `best.pt` at the project root, or set a custom path in the sidebar.
 
-The footer and sidebar note that **inference is mock/placeholder** until one of these is wired.
+Mock Mode provides sample outputs, while Local Artifact Mode uses YOLO with `best.pt`.
+
+Expected outputs in the UI:
+- detected pill count (`detected_count`)
+- dosage decision/status (`Correct dosage`, `Too few`, `Too many`)
+- pipeline explorer stage images and the per-detection feature table
 
 ### Sample images and evaluation data
 
-- Place PNG or JPEG files under **`assets/sample_images/`**. If the folder is empty on first run, the app creates a few synthetic pill-like images so **Use Random Dataset Image** works immediately.
+- Place PNG or JPEG files under **`assets/sample_images/`**. If the folder is empty or missing on first run, the app creates a few starter sample images so **Use Random Dataset Image** works immediately.
 - Evaluation charts read **`data/sample_metrics.json`**. Restore or edit that file if charts are missing.
 
 ---
@@ -132,13 +150,13 @@ def _render_sidebar() -> None:
             "Inference backend",
             list(BACKEND_OPTIONS),
             key="backend_mode",
-            help="Mock uses built-in placeholders. API/Local require wiring in services/.",
+            help="Local Artifact Mode runs trained YOLO, Mock Mode provides sample outputs, and API Mode connects to an external service when configured.",
         )
 
         mode = st.session_state.get("backend_mode")
         st.markdown(
-            '<p class="pc-sidebar-note">Real remote or local inference is not connected yet — '
-            "Mock Mode is recommended for demos.</p>",
+            '<p class="pc-sidebar-note">Local Artifact Mode runs trained YOLO using `best.pt`. '
+            "Mock Mode is available for sample outputs, and API Mode can be used when an external service is configured.</p>",
             unsafe_allow_html=True,
         )
 
@@ -164,8 +182,8 @@ def _render_sidebar() -> None:
                     )
 
         if mode == BACKEND_LOCAL:
-            st.markdown("**Local artifacts (placeholders)**")
-            st.text_input("Model path (.pkl / .joblib / .onnx / .pt)", key="local_model_path")
+            st.markdown("**Local artifacts (YOLO)**")
+            st.text_input("Model path (.pt, optional; blank = best.pt)", key="local_model_path")
             st.text_input("Preprocessor path (optional)", key="local_preprocessor_path")
             st.text_input("Label / config path (optional)", key="local_label_config_path")
 
@@ -176,8 +194,8 @@ def _render_sidebar() -> None:
 **Pill Counter for Medication Management** supports image-based pill counting and
 dosage verification against a user-entered expected dose.
 
-This release focuses on **UI and architecture**. Connect your Colab-exported model
-via REST or local serialization in the next phase.
+Use **Local Artifact Mode** for built-in YOLO inference with `best.pt`, or connect an
+external service through **API Mode** when needed.
                 """
             )
 ```
@@ -210,7 +228,7 @@ def render_run_analysis_button() -> None:
     expected = int(st.session_state["expected_dosage"])
     mode = st.session_state["backend_mode"]
 
-    with st.spinner("Running image-processing pipeline (mock or configured backend)…"):
+    with st.spinner("Running analysis…"):
         result, infer_err = run_analysis(
             mode,
             img,
@@ -241,11 +259,10 @@ def render_run_analysis_button() -> None:
 
 ---
 
-## Academic / demo notes
+## Notes
 
-- **Mock Mode** is deterministic for a given image: the same upload yields the same demo count.
-- The footer states that **inference is mocked** until the backend is wired.
-- Naming follows **image-processing** stages (grayscale, denoising, segmentation, components, features).
+- **Mock Mode** is deterministic for a given image: the same upload yields the same sample count.
+- Naming in the explorer follows high-level image-analysis stages (grayscale, denoising, segmentation view, detection overlay, features).
 
 ## License / usage
 

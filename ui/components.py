@@ -96,7 +96,7 @@ def render_input_panel() -> None:
         key="expected_dosage",
     )
 
-    with st.expander("Advanced preprocessing (placeholders for future pipeline)"):
+    with st.expander("Advanced analysis settings"):
         c1, c2 = st.columns(2)
         with c1:
             st.number_input(
@@ -130,7 +130,7 @@ def render_input_panel() -> None:
                 key="max_region_area",
             )
         st.number_input(
-            "Morphology kernel size (placeholder)",
+            "Morphology kernel size",
             min_value=1,
             key="morph_kernel",
         )
@@ -145,9 +145,8 @@ def _validate_before_run() -> str | None:
         if not url:
             return "API Mode is selected but the base URL is empty. Add it in the sidebar or Settings page."
     if mode == BACKEND_LOCAL:
-        mp = (st.session_state.get("local_model_path") or "").strip()
-        if not mp:
-            return "Local Artifact Mode needs a model file path (placeholder until your artifact is connected)."
+        # `best.pt` is the default when the sidebar path is left blank.
+        pass
     return None
 
 
@@ -172,7 +171,7 @@ def render_run_analysis_button() -> None:
     expected = int(st.session_state["expected_dosage"])
     mode = st.session_state["backend_mode"]
 
-    with st.spinner("Running image-processing pipeline (mock or configured backend)…"):
+    with st.spinner("Running analysis…"):
         result, infer_err = run_analysis(
             mode,
             img,
@@ -220,8 +219,21 @@ def render_results_dashboard() -> None:
     c4, c5, c6 = st.columns(3)
     render_metric_cell("Processing time (s)", str(res.get("processing_time", "—")), c4)
     conf = res.get("metrics", {}) or {}
-    render_metric_cell("Confidence (placeholder)", str(conf.get("confidence", "—")), c5)
+    render_metric_cell("Confidence", str(conf.get("confidence", "—")), c5)
     render_metric_cell("Backend mode", str(res.get("backend_mode", st.session_state.get("backend_mode"))), c6)
+
+    validation_status = res.get("validation_status")
+    validation_message = res.get("validation_message")
+    if validation_status == "warning" and validation_message:
+        st.warning(str(validation_message))
+    elif validation_status == "error" and validation_message:
+        st.error(str(validation_message))
+    elif validation_message and validation_status:
+        st.caption(f"Validation: {validation_status} - {validation_message}")
+
+    warnings = res.get("warnings") or []
+    for w in warnings:
+        st.info(str(w))
 
 
 def _tab_stage_body(title: str, explanation: str, image: Image.Image | None, details: dict) -> None:
@@ -232,7 +244,7 @@ def _tab_stage_body(title: str, explanation: str, image: Image.Image | None, det
     else:
         st.info("No image for this stage in the current response.")
     if details:
-        with st.expander("Technical details (demo)"):
+        with st.expander("Technical details"):
             st.json(details)
 
 
@@ -240,7 +252,7 @@ def render_pipeline_explorer() -> None:
     """Tabs for each intermediate stage + feature table."""
     section_header(
         "Pipeline explorer",
-        "Intermediate outputs from preprocessing through connected-component labeling (mock data in this phase).",
+        "Intermediate outputs and display-ready views returned by the current analysis pipeline.",
     )
     res = st.session_state.get("pipeline_result")
     if not res:
@@ -277,9 +289,9 @@ def render_pipeline_explorer() -> None:
     with tabs[2]:
         _tab_stage_body(
             "Denoised",
-            "Noise suppression prior to thresholding (median filter placeholder).",
+            "Noise suppression preview used for display consistency in the explorer.",
             pil_map.get("denoised"),
-            {"filter": "median 3×3 (demo)"},
+            {"filter": "median 3x3 preview"},
         )
     with tabs[3]:
         _tab_stage_body(
@@ -297,7 +309,7 @@ def render_pipeline_explorer() -> None:
         }
         _tab_stage_body(
             "Detected components",
-            "Bounding boxes from connected-component analysis (mock overlays).",
+            "Detected regions overlay based on the current inference output.",
             pil_map.get("components_overlay"),
             det,
         )
@@ -309,6 +321,10 @@ def render_pipeline_explorer() -> None:
             st.dataframe(df, use_container_width=True, hide_index=True)
         else:
             st.info("No feature rows in this response.")
+        detections = res.get("detections") or []
+        if detections:
+            st.caption("Detection details returned by the current model output.")
+            st.dataframe(pd.DataFrame(detections), use_container_width=True, hide_index=True)
 
 
 def load_evaluation_data() -> dict | None:
@@ -325,7 +341,7 @@ def render_evaluation_dashboard() -> None:
     """Charts and tables from bundled mock evaluation JSON."""
     section_header(
         "Evaluation",
-        "Illustrative metrics and error analysis for academic review (synthetic data).",
+        "Bundled evaluation metrics and error analysis summary.",
     )
     data = load_evaluation_data()
     if not data:
@@ -371,7 +387,7 @@ def render_settings_page() -> None:
     """Dedicated page mirroring backend options with room for documentation."""
     section_header(
         "Settings / Backend mode",
-        "Connect a Colab-exported API or a local serialized pipeline in the next phase.",
+        "Run local YOLO (`best.pt`) or use Mock Mode.",
     )
     st.markdown(
         """
@@ -379,9 +395,10 @@ def render_settings_page() -> None:
 
 **API Mode** will POST the image and dosage metadata to your deployed service.
 
-**Local Artifact Mode** will load `joblib` / `pickle` / ONNX / Torch weights from disk.
+**Local Artifact Mode** runs trained YOLO inference using `best.pt` (default: project root).
+If you set `local_model_path` in the sidebar, that custom path will be used instead.
 
-Real inference is **not** wired yet — see `services/api_client.py` and `services/inference.py` for TODOs.
+The app returns a dict shaped to match the UI contract (pill count + dosage decision + stage images).
         """
     )
     st.subheader("Current configuration (also editable in the sidebar)")

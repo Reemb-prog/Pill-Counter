@@ -50,13 +50,13 @@ def _render_sidebar() -> None:
             "Inference backend",
             list(BACKEND_OPTIONS),
             key="backend_mode",
-            help="Mock uses built-in placeholders. API/Local require wiring in services/.",
+            help="Local Artifact Mode runs trained YOLO, Mock Mode provides sample outputs, and API Mode connects to an external service when configured.",
         )
 
         mode = st.session_state.get("backend_mode")
         st.markdown(
-            '<p class="pc-sidebar-note">Real remote or local inference is not connected yet — '
-            "Mock Mode is recommended for demos.</p>",
+            '<p class="pc-sidebar-note">Local Artifact Mode runs trained YOLO using `best.pt`. '
+            "Mock Mode is available for sample outputs, and API Mode can be used when an external service is configured.</p>",
             unsafe_allow_html=True,
         )
 
@@ -82,8 +82,8 @@ def _render_sidebar() -> None:
                     )
 
         if mode == BACKEND_LOCAL:
-            st.markdown("**Local artifacts (placeholders)**")
-            st.text_input("Model path (.pkl / .joblib / .onnx / .pt)", key="local_model_path")
+            st.markdown("**Local artifacts (YOLO)**")
+            st.text_input("Model path (.pt, optional; blank = best.pt)", key="local_model_path")
             st.text_input("Preprocessor path (optional)", key="local_preprocessor_path")
             st.text_input("Label / config path (optional)", key="local_label_config_path")
 
@@ -94,8 +94,8 @@ def _render_sidebar() -> None:
 **Pill Counter for Medication Management** supports image-based pill counting and
 dosage verification against a user-entered expected dose.
 
-This release focuses on **UI and architecture**. Connect your Colab-exported model
-via REST or local serialization in the next phase.
+Use **Local Artifact Mode** for built-in YOLO inference with `best.pt`, or connect an
+external service through **API Mode** when needed.
                 """
             )
 
@@ -106,14 +106,13 @@ def _page_home() -> None:
     with c1:
         st.markdown(
             """
-**How it works (planned pipeline)**  
+**How it works**  
 1. Image input  
-2. Preprocessing  
-3. Segmentation  
-4. Connected components / detection  
-5. Feature extraction  
-6. Counting + dosage decision  
-7. Reported output  
+2. Model-ready image preparation  
+3. YOLO detection  
+4. Count extraction from detections  
+5. Dosage decision  
+6. Reported output  
             """
         )
     with c2:

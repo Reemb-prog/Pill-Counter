@@ -1,11 +1,7 @@
 """
-Mock image-processing pipeline for UI/demo phase.
+Sample-output image-processing pipeline for Mock Mode.
 
-Produces outputs shaped like the future REST API contract (see services/api_client.py).
-All intermediate "stages" use lightweight PIL/Numpy-style operations so the UI looks credible.
-
-TODO: Replace with calls to your real segmentation + connected-components pipeline from Colab,
-or delegate entirely to inference.py -> ApiClient when your FastAPI service is live.
+Produces outputs shaped like the same UI/API contract used by the rest of the app.
 """
 
 from __future__ import annotations
@@ -29,7 +25,7 @@ def _pil_to_base64_png(img: Image.Image) -> str:
 
 
 def _deterministic_count(pil_image: Image.Image, min_c: int = 1, max_c: int = 12) -> int:
-    """Stable pseudo-count from image bytes so the same upload always yields the same demo count."""
+    """Stable pseudo-count from image bytes so the same upload always yields the same sample count."""
     raw = pil_image.tobytes()
     h = hashlib.sha256(raw).hexdigest()
     n = int(h[:8], 16) % (max_c - min_c + 1) + min_c
@@ -45,7 +41,7 @@ def _denoise(pil: Image.Image) -> Image.Image:
 
 
 def _segment_placeholder(gray_rgb: Image.Image, threshold: float) -> Image.Image:
-    """Simple threshold mask tinted for visualization (not production segmentation)."""
+    """Simple threshold mask tinted for visualization in Mock Mode."""
     g = ImageOps.grayscale(gray_rgb)
     arr = np.asarray(g)
     mask = (arr >= threshold).astype(np.uint8) * 255
@@ -57,7 +53,7 @@ def _segment_placeholder(gray_rgb: Image.Image, threshold: float) -> Image.Image
 
 
 def _components_overlay(original: Image.Image, num_regions: int) -> Image.Image:
-    """Draw mock bounding boxes / ellipses for 'detected' components."""
+    """Draw sample bounding boxes / ellipses for detected components."""
     overlay = original.copy()
     draw = ImageDraw.Draw(overlay)
     w, h = overlay.size
@@ -120,7 +116,7 @@ def run_mock_pipeline(
     morph_kernel: int = 3,
 ) -> dict[str, Any]:
     """
-    Run mock stages and return a dict aligned with the future API JSON shape.
+    Run Mock Mode stages and return a dict aligned with the app's result shape.
 
     Images in `images` are base64 PNG strings for UI decoding; the app may also
     attach PIL copies in session for faster display — see inference.run_analysis.
@@ -169,6 +165,9 @@ def run_mock_pipeline(
             "morph_kernel": morph_kernel,
             "candidate_regions": num_feature_rows,
         },
+        "validation_status": "valid",
+        "validation_message": "Sample-output analysis completed successfully.",
+        "detections": [],
         # PIL objects for immediate UI (stripped before any JSON serialization)
         "_pil": {
             "original": work,

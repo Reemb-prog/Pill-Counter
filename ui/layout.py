@@ -53,7 +53,7 @@ def render_footer_note() -> None:
     st.markdown(
         """
         <div class="pc-footnote">
-          Current version uses UI mock outputs. Model inference will be connected in the next phase.
+          Local Artifact Mode runs trained YOLO inference using `best.pt` by default. Mock Mode remains available for sample-output previews.
         </div>
         """,
         unsafe_allow_html=True,

@@ -1,17 +1,19 @@
 """
-Unified inference adapter: Mock, API (future), or Local artifact (future).
+Unified inference adapter for the Streamlit UI.
+
+Available modes:
+- Mock: sample-output mode for UI previews and fallback demos
+- API: optional external service integration
+- Local artifact: current built-in YOLO inference using `best.pt`
 
 Use `run_analysis(...)` from the UI layer (see `ui/components.py`).
-
-TODO (Colab → production):
-- **API**: Implement PillCountApiClient.post_predict and decode base64 `images` to PIL.
-- **Local**: Load joblib/pickle/ONNX/Torch in LocalArtifactRunner and return the same dict shape.
 """
 
 from __future__ import annotations
 
 import base64
 import io
+from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -19,7 +21,7 @@ from PIL import Image
 
 from services.api_client import ApiClientConfig, PillCountApiClient
 from services.mock_pipeline import run_mock_pipeline
-from utils.config import BACKEND_API, BACKEND_LOCAL, BACKEND_MOCK
+from utils.config import BACKEND_API, BACKEND_LOCAL, BACKEND_MOCK, PROJECT_ROOT
 
 
 def _b64_to_pil(b64: str | None) -> Image.Image | None:
@@ -33,7 +35,7 @@ def _b64_to_pil(b64: str | None) -> Image.Image | None:
 
 
 def _attach_pil_from_result(result: dict[str, Any]) -> dict[str, Any]:
-    """If API returns only base64, build _pil for the UI."""
+    """If an API returns only base64 images, build `_pil` for the UI."""
     if "_pil" in result and result["_pil"]:
         return result
     imgs = result.get("images") or {}
@@ -48,7 +50,7 @@ def _attach_pil_from_result(result: dict[str, Any]) -> dict[str, Any]:
 
 
 class PipelineRunner(ABC):
-    """Abstract runner: implement for API and local artifact backends."""
+    """Abstract runner for the available inference backends."""
 
     @abstractmethod
     def run(
@@ -61,6 +63,8 @@ class PipelineRunner(ABC):
 
 
 class MockRunner(PipelineRunner):
+    """Sample-output runner used when the user selects Mock Mode."""
+
     def run(
         self,
         image: Image.Image,
@@ -80,6 +84,8 @@ class MockRunner(PipelineRunner):
 
 
 class ApiRunner(PipelineRunner):
+    """Optional external-service runner."""
+
     def __init__(self, client: PillCountApiClient) -> None:
         self.client = client
 
@@ -91,18 +97,17 @@ class ApiRunner(PipelineRunner):
     ) -> dict[str, Any]:
         buf = io.BytesIO()
         image.save(buf, format="PNG")
-        # TODO: when post_predict is implemented, merge settings into request body
+        # TODO: when post_predict is implemented, merge settings into request body.
         result = self.client.post_predict(buf.getvalue(), expected_dosage, settings)
         return _attach_pil_from_result(result)
 
 
 class LocalArtifactRunner(PipelineRunner):
     """
-    Placeholder for joblib/pickle/ONNX/PyTorch/TF SavedModel loading.
+    Local artifact inference runner.
 
-    TODO:
-    - Load preprocessor + model paths from session / config.
-    - Run your exported pipeline and build the same response dict as the API.
+    For this project phase, the only connected local artifact is the trained YOLO weights:
+    - `best.pt` (default: placed at project root)
     """
 
     def __init__(
@@ -121,10 +126,25 @@ class LocalArtifactRunner(PipelineRunner):
         expected_dosage: int,
         settings: dict[str, Any],
     ) -> dict[str, Any]:
-        raise NotImplementedError(
-            "Local artifact inference not connected. Export your Colab model to "
-            "joblib/pkl/ONNX/.pt and implement LocalArtifactRunner.run(). "
-            f"Configured model path: {self.model_path!r}"
+        model_path = (self.model_path or "").strip()
+        if not model_path:
+            model_path = str(PROJECT_ROOT / "best.pt")
+
+        mp = Path(model_path)
+        if not mp.exists():
+            raise FileNotFoundError(
+                f"Trained model weights not found: {mp}\n\n"
+                "Place `best.pt` at the project root (or set a custom path in the sidebar)."
+            )
+
+        # Lazy import so the app can start in Mock/API modes without ultralytics installed.
+        from services.yolo_trained_pipeline import predict_count_and_decision_pil
+
+        return predict_count_and_decision_pil(
+            image,
+            expected_dosage=expected_dosage,
+            model_path=mp,
+            settings=settings,
         )
 
 

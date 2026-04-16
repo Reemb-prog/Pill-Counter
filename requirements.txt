@@ -3,3 +3,11 @@ pandas>=2.0.0
 numpy>=1.24.0
 Pillow>=10.0.0
 requests>=2.31.0
+ultralytics
+
+# Notebook + OpenCV pipeline (optional for Streamlit-only installs)
+opencv-python-headless>=4.8.0
+matplotlib>=3.7.0
+scikit-image>=0.22.0
+jupyter>=1.0.0
+ipykernel>=6.25.0

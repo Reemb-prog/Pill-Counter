@@ -1,8 +1,5 @@
 """
-Image loading, validation, sampling, and optional synthetic sample generation.
-
-TODO: When connecting a real preprocessor from Colab, hook resizing/normalization
-here or pass arrays through services/inference.py instead of duplicating logic.
+Image loading, validation, sampling, and optional starter sample-image generation.
 """
 
 from __future__ import annotations
@@ -64,8 +61,8 @@ def load_random_sample(folder: Path | None = None) -> tuple[Image.Image | None, 
 
 def ensure_demo_sample_images() -> None:
     """
-    If the sample folder has no images, create a few simple synthetic 'pill' thumbnails
-    so demos work out of the box.
+    If the sample folder has no images, create a few simple starter sample images
+    so random-sample mode works out of the box.
     """
     SAMPLE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     if list_sample_images():
