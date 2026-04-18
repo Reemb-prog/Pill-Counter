@@ -128,7 +128,7 @@ class LocalArtifactRunner(PipelineRunner):
     ) -> dict[str, Any]:
         model_path = (self.model_path or "").strip()
         if not model_path:
-            model_path = str(PROJECT_ROOT / "best.pt")
+            model_path = str(PROJECT_ROOT / "model/best.pt")
 
         mp = Path(model_path)
         if not mp.exists():
